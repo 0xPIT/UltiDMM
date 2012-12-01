@@ -1,0 +1,6 @@
+[submodule "menu"]
+	path = menu
+	url = git@github.com:0xPIT/menu.git
+[submodule "encoder"]
+	path = encoder
+	url = git@github.com:0xPIT/encoder.git
