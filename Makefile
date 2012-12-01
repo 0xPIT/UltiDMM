@@ -22,7 +22,7 @@ SRC = \
 	constants.c \
 	sed1520.c \
 	fonts.c   \
-	adc.c \
+	adc/adc.c \
 	util.c \
 	crc8.c \
 	menu/menu.c \
@@ -54,7 +54,7 @@ DEBUG =
 EXTRAINCDIRS = .
 EXTRAINCDIRS += ./menu
 EXTRAINCDIRS += ./encoder
-
+EXTRAINCDIRS += ./adc
 
 
 # Compiler flag to set the C Standard level.
@@ -539,6 +539,7 @@ clean_list :
 $(shell mkdir $(OBJDIR) 2>/dev/null)
 $(shell mkdir $(OBJDIR)/menu 2>/dev/null)
 $(shell mkdir $(OBJDIR)/encoder 2>/dev/null)
+$(shell mkdir $(OBJDIR)/adc 2>/dev/null)
 
 
 # Include the dependency files.

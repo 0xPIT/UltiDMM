@@ -4,3 +4,6 @@
 [submodule "encoder"]
 	path = encoder
 	url = git@github.com:0xPIT/encoder.git
+[submodule "adc"]
+	path = adc
+	url = git@github.com:0xPIT/adc.git
