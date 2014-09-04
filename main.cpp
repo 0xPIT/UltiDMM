@@ -26,7 +26,15 @@
 //  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 //  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // -----------------------------------------------------------------------------
-  
+
+/*
+TODO
+
+- Separate set of adc calibration values for current measurement
+- Zero-Offset for both channels
+
+*/  
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
@@ -88,6 +96,9 @@ char buffer[25];
 uint16_t tick = 0;
 volatile bool triggerDisplayRefresh = false;
 bool isDirty;
+
+Menu::Engine Engine;
+
 RotaryEncoder Encoder;
 int8_t  encMovement = 0;
 int32_t encAbsoluteValue = 0;
@@ -193,7 +204,7 @@ ISR(TIMER0_COMPA_vect)
 
 #ifdef WITH_OWSENSORS
   if (tick % 512 == 0) {
-    triggerOneWireRead = true;  
+    triggerOneWireRead = true;
   }
 #endif
 
@@ -227,7 +238,7 @@ uint8_t editState   = State::EditModeNone;
 
 // ----------------------------------------------------------------------------- 
 //
-uint8_t menuExit(menuAction_t action) {
+bool menuExit(const Menu::Action_t action) {
   // clear lcd at menu area (update done in main loop)
   lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
   
@@ -237,32 +248,33 @@ uint8_t menuExit(menuAction_t action) {
   // reset system status
   systemState = State::Measure;
   editState = State::EditModeNone;
-  menuCurrentItem = &menuNull;
+  
+  Engine.currentItem = &Menu::NullItem;
 
-  return TRUE;
+  return true;
 }
 
 // ----------------------------------------------------------------------------- 
 //
-uint8_t menuRenderLabel(menuAction_t action) {
+bool menuRenderLabel(const Menu::Action_t action) {
   //if (action == menuActionLabel) {
     lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
-    lcd_text_p(1, 1, DEFAULT_FONT, menuLabel(menuCurrentItem));
+    lcd_text_p(1, 1, DEFAULT_FONT, Engine.getLabel(Engine.currentItem));
   //}
 
-  return TRUE;
+  return true;
 }
 
 // ----------------------------------------------------------------------------- 
 // live calibration from Channel 0
 //   saves values on click
 //
-uint8_t menuActionCalibrate(menuAction_t action) {
+bool menuActionCalibrate(const Menu::Action_t action) 
+{
+  extern const Menu::Item_t miCalibrateHi;
+  uint32_t *adcParameterValue = (Engine.currentItem == &miCalibrateHi) ? &adcCalibration.hi : &adcCalibration.lo;  
 
-  extern const MenuItem_t miCalibrateHi;
-  uint32_t *adcParameterValue = (menuCurrentItem == &miCalibrateHi) ? &adcCalibration.hi : &adcCalibration.lo;  
-
-  if (action == menuActionDisplay) {
+  if (action == Menu::actionDisplay) {
     // display stored setting value
     itoa10(*adcParameterValue, buffer);
     lcd_text(50, 1, DEFAULT_FONT, buffer);
@@ -273,32 +285,32 @@ uint8_t menuActionCalibrate(menuAction_t action) {
     lcd_text(100, 1, DEFAULT_FONT, buffer);
   }
 
-  if (action == menuActionTrigger) {
+  if (action == Menu::actionTrigger) {
     atomicAssign(*adcParameterValue, adcValue(0, AdcReadRaw));
     adcSaveCalibrationData();
   }
 
-  if (action == menuActionLabel) {
+  if (action == Menu::actionLabel) {
     menuRenderLabel(action);  
   }
 
-  return TRUE;
+  return true;
 }
 
 // ----------------------------------------------------------------------------- 
 // display layout & unit
 //   saves parameters on exit
 //
-uint8_t menuActionView(menuAction_t action) {  
+bool menuActionView(const Menu::Action_t action) {  
   static int8_t menuValue = 0;
 
-  extern const MenuItem_t miChannelView0;
-  uint8_t channel = (menuCurrentItem == &miChannelView0) ? Settings::ChannelVoltage : Settings::ChannelCurrent;  
+  extern const Menu::Item_t miChannelView0;
+  uint8_t channel = (Engine.currentItem == &miChannelView0) ? Settings::ChannelVoltage : Settings::ChannelCurrent;  
   DisplaySettings_t *C = &Settings::Active.Channel[channel];
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionDisplay) {
+  if (action == Menu::actionDisplay) {
     if (editState != State::EditModeNone) {
       menuValue += encMovement;
     }
@@ -335,7 +347,7 @@ uint8_t menuActionView(menuAction_t action) {
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionTrigger) { // enter edit mode, then switch between unit and layout
+  if (action == Menu::actionTrigger) { // enter edit mode, then switch between unit and layout
     if (editState == State::EditModeNone) { // enter edit mode
       isDirty = false;
       systemState = State::Edit;            // prevent encoder to change menu
@@ -354,7 +366,7 @@ uint8_t menuActionView(menuAction_t action) {
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionParent) { // navigating to self->parent
+  if (action == Menu::actionParent) { // navigating to self->parent
     if (editState != State::EditModeNone) { // leave edit mode, stay on menu item
       editState = State::EditModeNone;
       systemState = State::Settings; // release encoder
@@ -362,30 +374,30 @@ uint8_t menuActionView(menuAction_t action) {
         saveSettings(true);
         isDirty = false;
       }
-      return FALSE;
+      return false;
     }
   }
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionLabel) {
+  if (action == Menu::actionLabel) {
     menuRenderLabel(action);  
   }
 
-  return TRUE;
+  return true;
 }
 
 // ----------------------------------------------------------------------------- 
 // scale factor
 //
-uint8_t menuActionScale(menuAction_t action) {  
-  extern const MenuItem_t miChScale0;
-  uint8_t channel = (menuCurrentItem == &miChScale0) ? Settings::ChannelVoltage : Settings::ChannelCurrent;  
+bool menuActionScale(const Menu::Action_t action) {  
+  extern const Menu::Item_t miChScale0;
+  uint8_t channel = (Engine.currentItem == &miChScale0) ? Settings::ChannelVoltage : Settings::ChannelCurrent;  
   DisplaySettings_t *C = &Settings::Active.Channel[channel];
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionDisplay) {
+  if (action == Menu::actionDisplay) {
     if (editState == State::EditModeScale) {
       clampValue(encAbsoluteValue, 10, 500); // allow 10 - 500% scale factor
       if (encAbsoluteValue != C->scale) {
@@ -407,7 +419,7 @@ uint8_t menuActionScale(menuAction_t action) {
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionTrigger) {
+  if (action == Menu::actionTrigger) {
     if (editState != State::EditModeScale) { // enter edit mode
       systemState = State::Edit;             // prevent encoder to change menu
       editState = State::EditModeScale;
@@ -419,7 +431,7 @@ uint8_t menuActionScale(menuAction_t action) {
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionParent) {
+  if (action == Menu::actionParent) {
     if (editState == State::EditModeScale) { // leave edit mode, stay on menu item
       editState = State::EditModeNone;
       systemState = State::Settings; // release encoder
@@ -430,17 +442,17 @@ uint8_t menuActionScale(menuAction_t action) {
         isDirty = false;
       }
 
-      return FALSE;
+      return false;
     }
   }
 
   // ---------------------------------------------------------------
 
-  if (action == menuActionLabel) {
+  if (action == Menu::actionLabel) {
     menuRenderLabel(action);  
   }
 
-  return TRUE;
+  return true;
 }
 
 
@@ -448,24 +460,24 @@ uint8_t menuActionScale(menuAction_t action) {
 // menuItem Arguments: Name, Label, Next, Previous, Parent, Child, Callback
 //
 
-menuItem(miExit, "", menuNull, menuNull, menuNull, menuNull, menuExit);
+MenuItem(miExit, "", Menu::NullItem, Menu::NullItem, Menu::NullItem, Menu::NullItem, menuExit);
 
-menuItem(miSettings, "Settings >", miTest2, menuNull, miExit, miCalibrateLo, menuRenderLabel);
-  menuItem(miCalibrateLo,  "Calibrate Lo", miCalibrateHi,  menuNull,       miSettings, menuNull, menuActionCalibrate);
-  menuItem(miCalibrateHi,  "Calibrate Hi", miTempShutdown, miCalibrateLo,  miSettings, menuNull, menuActionCalibrate);
-  menuItem(miTempShutdown, "@C Shutdown",  miTempFanStart, miCalibrateHi,  miSettings, menuNull, menuRenderLabel);
-  menuItem(miTempFanStart, "@C FanStart",  miChannel0,     miTempShutdown, miSettings, menuNull, menuRenderLabel);
+MenuItem(miSettings, "Settings >", miTest2, Menu::NullItem, miExit, miCalibrateLo, menuRenderLabel);
+  MenuItem(miCalibrateLo,  "Calibrate Lo", miCalibrateHi,  Menu::NullItem,       miSettings, Menu::NullItem, menuActionCalibrate);
+  MenuItem(miCalibrateHi,  "Calibrate Hi", miTempShutdown, miCalibrateLo,  miSettings, Menu::NullItem, menuActionCalibrate);
+  MenuItem(miTempShutdown, "@C Shutdown",  miTempFanStart, miCalibrateHi,  miSettings, Menu::NullItem, menuRenderLabel);
+  MenuItem(miTempFanStart, "@C FanStart",  miChannel0,     miTempShutdown, miSettings, Menu::NullItem, menuRenderLabel);
 
-  menuItem(miChannel0, "Channel 0 >", miChannel1, miTempFanStart, miSettings, miChannelView0, menuRenderLabel);
-    menuItem(miChannelView0, "Ch0:View",  miChScale0,     miChScale0,     miChannel0, menuNull, menuActionView);    
-    menuItem(miChScale0,     "Ch0:Scale", miChannelView0, miChannelView0, miChannel0, menuNull, menuActionScale);    
+  MenuItem(miChannel0, "Channel 0 >", miChannel1, miTempFanStart, miSettings, miChannelView0, menuRenderLabel);
+    MenuItem(miChannelView0, "Ch0:View",  miChScale0,     miChScale0,     miChannel0, Menu::NullItem, menuActionView);    
+    MenuItem(miChScale0,     "Ch0:Scale", miChannelView0, miChannelView0, miChannel0, Menu::NullItem, menuActionScale);    
 
-  menuItem(miChannel1, "Channel 1 >", menuNull, miChannel0, miSettings, miChannelView1, menuRenderLabel);
-    menuItem(miChannelView1, "Ch1:View",  miChScale1,     miChScale1,     miChannel1, menuNull, menuActionView);    
-    menuItem(miChScale1,     "Ch1:Scale", miChannelView1, miChannelView1, miChannel1, menuNull, menuActionScale); 
+  MenuItem(miChannel1, "Channel 1 >", Menu::NullItem, miChannel0, miSettings, miChannelView1, menuRenderLabel);
+    MenuItem(miChannelView1, "Ch1:View",  miChScale1,     miChScale1,     miChannel1, Menu::NullItem, menuActionView);    
+    MenuItem(miChScale1,     "Ch1:Scale", miChannelView1, miChannelView1, miChannel1, Menu::NullItem, menuActionScale); 
 
-menuItem(miTest2, "Test 2 Menu", miTest3,  miSettings, miExit, menuNull, menuRenderLabel);
-menuItem(miTest3, "Test 3 Menu", menuNull, miTest2,    miExit, menuNull, menuRenderLabel);
+MenuItem(miTest2, "Test 2 Menu", miTest3,  miSettings, miExit, Menu::NullItem, menuRenderLabel);
+MenuItem(miTest3, "Test 3 Menu", Menu::NullItem, miTest2,    miExit, Menu::NullItem, menuRenderLabel);
 
 // ---------------------------------------------------------------------------- 
 //
@@ -497,7 +509,7 @@ int __attribute__((naked)) main(void)
   sei();
 	
   // reset menu
-  menuExit(menuActionDisplay);
+  menuExit(Menu::actionDisplay);
 
   // load eeprom settings
   loadSettings();
@@ -515,13 +527,14 @@ int __attribute__((naked)) main(void)
     if (encMovement) {
       encAbsoluteValue += encMovement;
 
-          // DEBUG: output encoder value
+          #if 0 // DEBUG: output encoder value
           itoa10(encAbsoluteValue, buffer);
           lcd_box(110, 26, 121, 32, LCD_MODE_CLR);
           lcd_text(110, 26, DEFAULT_FONT, buffer);
+          #endif
 
       if (systemState == State::Settings) { // navigate only while in settings menu
-        menuNavigate((encMovement > 0) ? menuCurrentNext : menuCurrentPrev);
+        Engine.navigate((encMovement > 0) ? Engine.getNext() : Engine.getPrev());
       }
     }
 
@@ -531,7 +544,7 @@ int __attribute__((naked)) main(void)
     switch (Encoder.getButton()) {
       case State::Clicked:
         if (systemState != State::Measure) {
-          menuInvoke();
+          Engine.invoke();
         }
         break;
 
@@ -554,7 +567,7 @@ int __attribute__((naked)) main(void)
           }         
         }
         else { 
-          menuNavigate(menuCurrentParent);
+          Engine.navigate(Engine.getParent());
         }
         break;
 
@@ -562,7 +575,7 @@ int __attribute__((naked)) main(void)
         if (systemState == State::Measure) { 
           systemState = State::Settings;
           Encoder.setAccelerationEnabled(false);
-          menuNavigate(&miSettings);
+          Engine.navigate(&miSettings);
         }
         break;
 
@@ -576,8 +589,8 @@ int __attribute__((naked)) main(void)
     // -------------------------------------------------------------
     // refresh display of currently active menu
     //
-    if (menuCurrentItem != &menuNull) {
-      menuExecuteCallbackAction(menuActionDisplay);      
+    if (Engine.currentItem != &Menu::NullItem) {
+      Engine.executeCallbackAction(Menu::actionDisplay);      
     }
 
 // -------------------------------------------------------------

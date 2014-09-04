@@ -25,13 +25,13 @@ SRC = \
 	adc/adc.c \
 	util.c \
 	crc8.c \
-	menu/menu.c \
 	ds18x20.c \
 	onewire.c
 
 # List C++ source files here. (C dependencies are automatically generated.)
 CPPSRC = \
 	encoder/encoder.cpp \
+	menu/Menu.cpp \
 	main.cpp
 
 # List Assembler source files here.  #     Make them always end in a capital .S.
@@ -378,7 +378,7 @@ sizeafter:
 install: program
 
 program: $(TARGET).hex $(TARGET).eep
-	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH) $(AVRDUDE_WRITE_EEPROM)
+	echo $(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH) $(AVRDUDE_WRITE_EEPROM)
 
 # Generate avr-gdb config/init file which does the following:
 #     define the reset signal, load the target file, connect to target, and set 
