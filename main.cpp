@@ -259,7 +259,7 @@ bool menuExit(const Menu::Action_t action) {
 bool menuRenderLabel(const Menu::Action_t action) {
   //if (action == menuActionLabel) {
     lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
-    lcd_text_p(1, 1, DEFAULT_FONT, Engine.getLabel(Engine.currentItem));
+    lcd_text(1, 1, DEFAULT_FONT, Engine.getLabel(Engine.currentItem));
   //}
 
   return true;
@@ -269,24 +269,33 @@ bool menuRenderLabel(const Menu::Action_t action) {
 // live calibration from Channel 0
 //   saves values on click
 //
+
 bool menuActionCalibrate(const Menu::Action_t action) 
 {
-  extern const Menu::Item_t miCalibrateHi;
-  uint32_t *adcParameterValue = (Engine.currentItem == &miCalibrateHi) ? &adcCalibration.hi : &adcCalibration.lo;  
+  extern const Menu::Item_t miCalibrateLo0, miCalibrateLo1, miCalibrateHi1;
+
+  uint8_t channel = Engine.currentItem == &miCalibrateLo1 || Engine.currentItem == &miCalibrateHi1;
+  
+  uint32_t *adcParameterValue = 
+    (Engine.currentItem == &miCalibrateLo0 || Engine.currentItem == &miCalibrateLo1)
+    ? &adcCalibration[channel].lo
+    : &adcCalibration[channel].hi;
 
   if (action == Menu::actionDisplay) {
     // display stored setting value
     itoa10(*adcParameterValue, buffer);
+    lcd_box( 50, 1, 50, 10, LCD_MODE_CLR);
     lcd_text(50, 1, DEFAULT_FONT, buffer);
 
-    // display raw value
-    tmp = adcValue(0, AdcReadRaw);
+    // display current raw value
+    tmp = adcValue(channel, AdcReadRaw);
     itoa10(tmp, buffer);
+    lcd_box( 100, 1, 50, 10, LCD_MODE_CLR);
     lcd_text(100, 1, DEFAULT_FONT, buffer);
   }
 
   if (action == Menu::actionTrigger) {
-    atomicAssign(*adcParameterValue, adcValue(0, AdcReadRaw));
+    atomicAssign(*adcParameterValue, adcValue(channel, AdcReadRaw));
     adcSaveCalibrationData();
   }
 
@@ -317,13 +326,13 @@ bool menuActionView(const Menu::Action_t action) {
 
     if (editState == State::EditModeLayout) {
       clampValue(menuValue, 0, DisplayLayoutCount - 1);
-      isDirty = true; //C->layout != menuValue;
+      isDirty = true;
       C->layout = menuValue;
     }
 
     if (editState == State::EditModeUnit) {
       clampValue(menuValue, 0, DisplayUnitCount - 1);
-      isDirty = true; //C->unit != menuValue;
+      isDirty = true;
       C->unit = menuValue;
     }
     
@@ -462,22 +471,22 @@ bool menuActionScale(const Menu::Action_t action) {
 
 MenuItem(miExit, "", Menu::NullItem, Menu::NullItem, Menu::NullItem, Menu::NullItem, menuExit);
 
-MenuItem(miSettings, "Settings >", miTest2, Menu::NullItem, miExit, miCalibrateLo, menuRenderLabel);
-  MenuItem(miCalibrateLo,  "Calibrate Lo", miCalibrateHi,  Menu::NullItem,       miSettings, Menu::NullItem, menuActionCalibrate);
-  MenuItem(miCalibrateHi,  "Calibrate Hi", miTempShutdown, miCalibrateLo,  miSettings, Menu::NullItem, menuActionCalibrate);
-  MenuItem(miTempShutdown, "@C Shutdown",  miTempFanStart, miCalibrateHi,  miSettings, Menu::NullItem, menuRenderLabel);
-  MenuItem(miTempFanStart, "@C FanStart",  miChannel0,     miTempShutdown, miSettings, Menu::NullItem, menuRenderLabel);
+MenuItem(miSettings, "Settings >", Menu::NullItem, Menu::NullItem, miExit, miChannel0, menuRenderLabel);
 
-  MenuItem(miChannel0, "Channel 0 >", miChannel1, miTempFanStart, miSettings, miChannelView0, menuRenderLabel);
-    MenuItem(miChannelView0, "Ch0:View",  miChScale0,     miChScale0,     miChannel0, Menu::NullItem, menuActionView);    
-    MenuItem(miChScale0,     "Ch0:Scale", miChannelView0, miChannelView0, miChannel0, Menu::NullItem, menuActionScale);    
+  MenuItem(miChannel0, "Channel 0 >", miChannel1, Menu::NullItem, miSettings, miCalibrateLo0, menuRenderLabel);
+    MenuItem(miCalibrateLo0, "Calibrate Lo", miCalibrateHi0, Menu::NullItem, miChannel0, Menu::NullItem, menuActionCalibrate);
+    MenuItem(miCalibrateHi0, "Calibrate Hi", miChannelView0, miCalibrateLo0, miChannel0, Menu::NullItem, menuActionCalibrate);
+    MenuItem(miChannelView0, "View",         miChScale0,     miCalibrateHi0, miChannel0, Menu::NullItem, menuActionView);
+    MenuItem(miChScale0,     "Scale",        Menu::NullItem, miChannelView0, miChannel0, Menu::NullItem, menuActionScale);
 
-  MenuItem(miChannel1, "Channel 1 >", Menu::NullItem, miChannel0, miSettings, miChannelView1, menuRenderLabel);
-    MenuItem(miChannelView1, "Ch1:View",  miChScale1,     miChScale1,     miChannel1, Menu::NullItem, menuActionView);    
-    MenuItem(miChScale1,     "Ch1:Scale", miChannelView1, miChannelView1, miChannel1, Menu::NullItem, menuActionScale); 
+  MenuItem(miChannel1, "Channel 1 >", miTempShutdown, miChannel0, miSettings, miCalibrateLo1, menuRenderLabel);
+    MenuItem(miCalibrateLo1, "Calibrate Lo", miCalibrateHi1,  Menu::NullItem, miChannel1, Menu::NullItem, menuActionCalibrate);
+    MenuItem(miCalibrateHi1, "Calibrate Hi", miChannelView1,  miCalibrateLo1, miChannel1, Menu::NullItem, menuActionCalibrate);
+    MenuItem(miChannelView1, "View",         miChScale1,      miCalibrateHi1, miChannel1, Menu::NullItem, menuActionView);
+    MenuItem(miChScale1,     "Scale",        Menu::NullItem,  miChannelView1, miChannel1, Menu::NullItem, menuActionScale);
 
-MenuItem(miTest2, "Test 2 Menu", miTest3,  miSettings, miExit, Menu::NullItem, menuRenderLabel);
-MenuItem(miTest3, "Test 3 Menu", Menu::NullItem, miTest2,    miExit, Menu::NullItem, menuRenderLabel);
+  MenuItem(miTempShutdown, "@C Shutdown", miTempFanStart, miChannel1,     miSettings, Menu::NullItem, menuRenderLabel);
+  MenuItem(miTempFanStart, "@C FanStart", Menu::NullItem, miTempShutdown, miSettings, Menu::NullItem, menuRenderLabel);
 
 // ---------------------------------------------------------------------------- 
 //
