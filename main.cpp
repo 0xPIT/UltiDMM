@@ -300,7 +300,7 @@ bool menuActionCalibrate(const Menu::Action_t action)
   }
 
   if (action == Menu::actionLabel) {
-    menuRenderLabel(action);  
+    menuRenderLabel(action);
   }
 
   return true;
@@ -620,11 +620,11 @@ int __attribute__((naked)) main(void)
     // current average = (current sensor value * W) + (last average * (1 - W))
     // avg = val * 0.1 + avg * (1 - 0.1);
     //
-    #define EXP_WINDOW 16
+    #define EXP_SHIFT   5
     #define EXP_WEIGHT 15
     #define EXP_SCALE   4
-    #define EXP_SHIFT   5
-    #define EXP_RC     16 // Rounding correction: add 0,5 == 2 ^ SHIFT / 2
+    #define EXP_WINDOW (2 ^ EXP_SHIFT)
+    #define EXP_RC     (2 ^ EXP_SHIFT / 2) // Rounding correction: add 0,5 == 2 ^ SHIFT / 2
 
     smoothV = (V << (EXP_SHIFT - EXP_SCALE)) + ((smoothV * EXP_WEIGHT) >> EXP_SCALE);
     smoothC = (C << (EXP_SHIFT - EXP_SCALE)) + ((smoothC * EXP_WEIGHT) >> EXP_SCALE);
