@@ -2,7 +2,7 @@
 // UltiDMM
 // Configurable Panel Meter
 //
-// Copyright (c) 2012, karl@pitrich.com
+// Copyright (c) 2012, 2014 karl@pitrich.com
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -29,10 +29,7 @@
 
 /*
 TODO
-
-- Separate set of adc calibration values for current measurement
 - Zero-Offset for both channels
-
 */  
 
 #include <avr/io.h>
@@ -92,13 +89,12 @@ void displayDelay(uint8_t t);
 // ----------------------------------------------------------------------------- 
 
 int32_t tmp = 0;
-char buffer[25];
+char buffer[30];
 uint16_t tick = 0;
 volatile bool triggerDisplayRefresh = false;
 bool isDirty;
 
 Menu::Engine Engine;
-
 RotaryEncoder Encoder;
 int8_t  encMovement = 0;
 int32_t encAbsoluteValue = 0;
@@ -129,7 +125,7 @@ namespace Settings {
   SystemSettings_t Persisted EEMEM = {
     {
       { DisplayVolt,    1, 100, 350 },
-      { DisplaymAmpere, 3, 100, 100 }
+      { DisplaymAmpere, 3, 100, 300 }
     },
     0
   };
@@ -141,9 +137,8 @@ namespace Settings {
 
 void saveSettings(uint8_t block = false) 
 {
-  // remove debug text
-  lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
-  lcd_text_p(1, 1, DEFAULT_FONT, PSTR("Saving changes...")); displayDelay(5);
+  //lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
+  //lcd_text_p(1, 1, DEFAULT_FONT, PSTR("Saving changes...")); displayDelay(5);
 
   Settings::Active.checksum = crc8((uint8_t *)&Settings::Active, sizeof(Settings::Active) - sizeof(uint8_t));
 
@@ -169,9 +164,9 @@ void loadSettings(uint8_t block = false)
   }
 
   if (applydefaults) {
-    lcd_text_p(1, 1, DEFAULT_FONT, PSTR("Applying Default Settings...")); displayDelay(5);
+    lcd_text_p(1, 1, DEFAULT_FONT, PSTR("Applying Default Settings...")); displayDelay(20);
     Settings::Active.Channel[Settings::ChannelVoltage] = { DisplayVolt,    1, 100, 350 };
-    Settings::Active.Channel[Settings::ChannelCurrent] = { DisplaymAmpere, 1, 100, 100 };
+    Settings::Active.Channel[Settings::ChannelCurrent] = { DisplaymAmpere, 1, 100, 300 };
     saveSettings(block);
     lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
   }
@@ -185,12 +180,11 @@ void loadSettings(uint8_t block = false)
 void initTimer0(void)
 {
   TCCR0A |= (1<<WGM01);            // Mode: CTC
-  TCCR0B |= (1<<CS01) | (1<<CS00); // prescale 64   //1024: (1<<CS02) | (1<<CS00)
+  TCCR0B |= (1<<CS01) | (1<<CS00); // prescale 64   // 1024: (1<<CS02) | (1<<CS00)
   TIMSK0 |= (1<<OCIE0A);
   
-  //  OCRn = (clock / prescaler * desired_time_in_seconds) - 1
-  //         (8000000 / 64 * 0.001) - 1
-  //OCR0A = (F_CPU / 64 * 0.001) - 1;
+  // OCRn = (clock / prescaler * desired_time_in_seconds) - 1
+  // OCR0A = F_CPU / 64 * 0.001 - 1;
   OCR0A = 124;
 }
 
@@ -210,7 +204,7 @@ ISR(TIMER0_COMPA_vect)
 
   Encoder.service();
 
-  tick++;  
+  tick++;
 }
 
 // ----------------------------------------------------------------------------- 
@@ -229,7 +223,8 @@ namespace State {
     EditModeNone   = 0,
     EditModeLayout = (1<<0),
     EditModeUnit   = (1<<1),
-    EditModeScale  = (1<<2)
+    EditModeScale  = (1<<2),
+    EditModeCal    = (1<<3)
   } EditMode; 
 };
 
@@ -238,7 +233,8 @@ uint8_t editState   = State::EditModeNone;
 
 // ----------------------------------------------------------------------------- 
 //
-bool menuExit(const Menu::Action_t action) {
+bool menuExit(const Menu::Action_t action)
+{
   // clear lcd at menu area (update done in main loop)
   lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
   
@@ -256,7 +252,8 @@ bool menuExit(const Menu::Action_t action) {
 
 // ----------------------------------------------------------------------------- 
 //
-bool menuRenderLabel(const Menu::Action_t action) {
+bool menuRenderLabel(const Menu::Action_t action)
+{
   //if (action == menuActionLabel) {
     lcd_box(0, 0, 122, 10, LCD_MODE_CLR);
     lcd_text(1, 1, DEFAULT_FONT, Engine.getLabel(Engine.currentItem));
@@ -266,37 +263,58 @@ bool menuRenderLabel(const Menu::Action_t action) {
 }
 
 // ----------------------------------------------------------------------------- 
-// live calibration from Channel 0
-//   saves values on click
+//  ADC calibration
 //
-
 bool menuActionCalibrate(const Menu::Action_t action) 
 {
   extern const Menu::Item_t miCalibrateLo0, miCalibrateLo1, miCalibrateHi1;
-
-  uint8_t channel = Engine.currentItem == &miCalibrateLo1 || Engine.currentItem == &miCalibrateHi1;
   
-  uint32_t *adcParameterValue = 
+  uint8_t channel = Engine.currentItem == &miCalibrateLo1 || Engine.currentItem == &miCalibrateHi1;
+
+  uint32_t *adcCalibrationValue =
     (Engine.currentItem == &miCalibrateLo0 || Engine.currentItem == &miCalibrateLo1)
     ? &adcCalibration[channel].lo
     : &adcCalibration[channel].hi;
-
+  
   if (action == Menu::actionDisplay) {
-    // display stored setting value
-    itoa10(*adcParameterValue, buffer);
-    lcd_box( 50, 1, 50, 10, LCD_MODE_CLR);
+    if (editState != State::EditModeNone) {
+      if (encMovement) {
+        atomicAssign(*adcCalibrationValue, (*adcCalibrationValue + encMovement));
+      }
+    }
+
+    // display calibration value
+    itoa10(*adcCalibrationValue, buffer);
+    lcd_box( 50, 1, 50, 9, LCD_MODE_CLR);
     lcd_text(50, 1, DEFAULT_FONT, buffer);
 
-    // display current raw value
+    // edit cursor
+    if (editState == State::EditModeCal) {
+      lcd_box(49, 0, 21, 8, LCD_MODE_XOR);
+    }
+    lcd_rect(49, 0, 21, 8, (editState == State::EditModeCal) ? LCD_MODE_SET : LCD_MODE_CLR);
+
+    // display current raw adc value
     tmp = adcValue(channel, AdcReadRaw);
     itoa10(tmp, buffer);
-    lcd_box( 100, 1, 50, 10, LCD_MODE_CLR);
+    lcd_box( 100, 1, 50, 9, LCD_MODE_CLR);
     lcd_text(100, 1, DEFAULT_FONT, buffer);
   }
 
   if (action == Menu::actionTrigger) {
-    atomicAssign(*adcParameterValue, adcValue(channel, AdcReadRaw));
-    adcSaveCalibrationData();
+    if (editState == State::EditModeNone) { // enter edit mode
+      systemState = State::Edit;            // prevent encoder to change menu
+      editState = State::EditModeCal; 
+    }
+  }
+
+  if (action == Menu::actionParent) { // navigating to self->parent
+    if (editState != State::EditModeNone) { // leave edit mode, stay on menu item
+      adcSaveCalibrationData();
+      editState = State::EditModeNone;
+      systemState = State::Settings; // release encoder
+      return false;
+    }
   }
 
   if (action == Menu::actionLabel) {
@@ -310,7 +328,8 @@ bool menuActionCalibrate(const Menu::Action_t action)
 // display layout & unit
 //   saves parameters on exit
 //
-bool menuActionView(const Menu::Action_t action) {  
+bool menuActionView(const Menu::Action_t action)
+{  
   static int8_t menuValue = 0;
 
   extern const Menu::Item_t miChannelView0;
@@ -399,7 +418,8 @@ bool menuActionView(const Menu::Action_t action) {
 // ----------------------------------------------------------------------------- 
 // scale factor
 //
-bool menuActionScale(const Menu::Action_t action) {  
+bool menuActionScale(const Menu::Action_t action)
+{  
   extern const Menu::Item_t miChScale0;
   uint8_t channel = (Engine.currentItem == &miChScale0) ? Settings::ChannelVoltage : Settings::ChannelCurrent;  
   DisplaySettings_t *C = &Settings::Active.Channel[channel];
@@ -485,6 +505,7 @@ MenuItem(miSettings, "Settings >", Menu::NullItem, Menu::NullItem, miExit, miCha
     MenuItem(miChannelView1, "View",         miChScale1,      miCalibrateHi1, miChannel1, Menu::NullItem, menuActionView);
     MenuItem(miChScale1,     "Scale",        Menu::NullItem,  miChannelView1, miChannel1, Menu::NullItem, menuActionScale);
 
+  // not yet implemented
   MenuItem(miTempShutdown, "@C Shutdown", miTempFanStart, miChannel1,     miSettings, Menu::NullItem, menuRenderLabel);
   MenuItem(miTempFanStart, "@C FanStart", Menu::NullItem, miTempShutdown, miSettings, Menu::NullItem, menuRenderLabel);
 
@@ -536,11 +557,11 @@ int __attribute__((naked)) main(void)
     if (encMovement) {
       encAbsoluteValue += encMovement;
 
-          #if 0 // DEBUG: output encoder value
-          itoa10(encAbsoluteValue, buffer);
-          lcd_box(110, 26, 121, 32, LCD_MODE_CLR);
-          lcd_text(110, 26, DEFAULT_FONT, buffer);
-          #endif
+      #if 0 // display encoder value in bottom right corner
+      itoa10(encAbsoluteValue, buffer);
+      lcd_box(110, 26, 121, 32, LCD_MODE_CLR);
+      lcd_text(110, 26, DEFAULT_FONT, buffer);
+      #endif
 
       if (systemState == State::Settings) { // navigate only while in settings menu
         Engine.navigate((encMovement > 0) ? Engine.getNext() : Engine.getPrev());
@@ -628,7 +649,7 @@ int __attribute__((naked)) main(void)
 
     smoothV = (V << (EXP_SHIFT - EXP_SCALE)) + ((smoothV * EXP_WEIGHT) >> EXP_SCALE);
     smoothC = (C << (EXP_SHIFT - EXP_SCALE)) + ((smoothC * EXP_WEIGHT) >> EXP_SCALE);
-    
+
     uint32_t sv = (smoothV + EXP_RC) >> EXP_SHIFT;
     if (abs(sv - V) < EXP_WINDOW) {
       V = sv;
@@ -649,7 +670,7 @@ int __attribute__((naked)) main(void)
       lcd_text(1, 10, FONT_TEN_DOT, buffer);
       lcd_text_p(9 * 5 + 1, 14, FONT_SIX_DOT, (const char *)pgm_read_word(&DisplayUnit[S->unit]));
 
-      // hw limit
+      // hw limit pin / display CV mode
       bool Vlimit = GPIO_IN & (1<<GPIO_LIMIT_U_PIN) || systemState == State::Standby;
       lcd_box(9 * 5 + 1, 10, 10, 2, (Vlimit) ? LCD_MODE_SET : LCD_MODE_CLR);
     }
@@ -664,7 +685,7 @@ int __attribute__((naked)) main(void)
       lcd_text(  1 + 9 * 5 + 1 + 16, 10, FONT_TEN_DOT, buffer);
       lcd_text_p(1 + 9 * 5 + 1 + 16 + 9 * 5 + 1, 14, FONT_SIX_DOT, (const char *)pgm_read_word(&DisplayUnit[S->unit]));
 
-      // hw limit
+      // hw limit pin / display CC mode
       bool Climit = GPIO_IN & (1<<GPIO_LIMIT_I_PIN) || systemState == State::Standby;
       lcd_box(1 + 9 * 5 + 1 + 16 + 9 * 5 + 1, 10, 10, 2, (Climit) ? LCD_MODE_SET : LCD_MODE_CLR);
     }
@@ -713,9 +734,6 @@ int __attribute__((naked)) main(void)
     triggerDisplayRefresh = false;
 
     // -------------------------------------------------------------
-
-    // loop ticker box right lower corner
-    //lcd_box(SCRN_RIGHT - 1, 30, 2, 2, LCD_MODE_XOR);
 
     lcd_update_all();
   }

@@ -291,7 +291,7 @@ void lcd_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, const uint8_t mode
     }
 
     if ((y2 - y1) >= (x2 - x1) || (y1 - y2) >= (x2 - x1)) { 
-      // angle larger or equal 45�
+      // angle larger or equal 45°
       length = x2 - x1;								// not really the length :)
       m = ((y2 - y1) * 200) / length;
       yAlt = y1;
@@ -304,7 +304,7 @@ void lcd_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, const uint8_t mode
           y--;
         }
 
-        lcd_line(x1 + i, yAlt, x1 + i, y, mode ); /* wuff wuff recurs. */
+        lcd_line(x1 + i, yAlt, x1 + i, y, mode );
 
         if (length <= (y2 - y1) && y1 < y2) {
           yAlt = y + 1;
@@ -317,7 +317,7 @@ void lcd_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, const uint8_t mode
         }
       }
     } 
-    else { // angle smaller 45�
+    else { // angle smaller 45°
       // y1 must be smaller than y2
       if(y1 > y2) {
         xTmp = x1;
@@ -340,7 +340,7 @@ void lcd_line(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, const uint8_t mode
           y--;
         }
 
-        lcd_line(yAlt, y1 + i, y, y1 + i, mode); /* wuff */
+        lcd_line(yAlt, y1 + i, y, y1 + i, mode);
 
         if (length <= (x2 - x1) && x1 < x2) {
           yAlt = y + 1;
@@ -400,8 +400,8 @@ void lcd_rect(const uint8_t x, const uint8_t y, uint8_t width, uint8_t height, c
 {
   width--;
   height--;
-  lcd_line(x, y, x + width, y, mode);					// top
-  lcd_line(x, y, x, y + height, mode);					// left
+  lcd_line(x, y, x + width, y, mode);					          // top
+  lcd_line(x, y, x, y + height, mode);					        // left
   lcd_line(x, y + height, x + width, y + height, mode);	// bottom
   lcd_line(x + width, y, x + width, y + height, mode);	// right
 }
@@ -424,7 +424,6 @@ void lcd_box(const uint8_t x, const uint8_t y, uint8_t width, const uint8_t heig
 
 //-------------------------------------------------------------------------------------------------
 // Writes a glyph("letter") to the display at location x,y
-// (adapted function from the MJK-code)
 //
 // column    - x corrdinate of the left part of glyph          
 // row       - y coordinate of the top part of glyph       

@@ -447,7 +447,7 @@ uint16_t lcd_put_int (int16_t integer)
 
 // -----------------------------------------------------------------------------
 // Outputs a 16bit unsigned integer on the display // Added by Olli S.
- */   
+//   
 uint16_t lcd_put_uint (uint16_t integer) 
 {
   char buffer[10];
