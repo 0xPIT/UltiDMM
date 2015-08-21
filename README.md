@@ -13,6 +13,6 @@ I use the UltiDMM for my 0-350V 0-100mA lab power supply.
 
 
 [ImgActionShot]:https://raw.githubusercontent.com/0xPIT/UltiDMM/master/misc/actionshot.jpg
-[Calibration]http://www.atmel.com/Images/doc2559.pdf
-[oversampling]http://www.atmel.com/images/doc8003.pdf
+[Calibration]:http://www.atmel.com/Images/doc2559.pdf
+[oversampling]:http://www.atmel.com/images/doc8003.pdf
 
